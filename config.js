@@ -1,5 +1,5 @@
-/* Public Supabase project settings only. Never put service_role keys or passwords here. */
+/* Supabase configuration */
 window.RESELLER_CONFIG = {
-  SUPABASE_URL: 'PASTE_YOUR_SUPABASE_PROJECT_URL_HERE',
-  SUPABASE_ANON_KEY: 'PASTE_YOUR_SUPABASE_ANON_KEY_HERE'
+    SUPABASE_URL: 'https://xzjiyhchujeddupjinho.supabase.co',
+    SUPABASE_ANON_KEY: 'sb_publishable_mXggCimvoCzaJ3g-rHwNbA_d6P_tc5z'
 };
