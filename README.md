@@ -1,75 +1,93 @@
 # RESELLER — GitHub Pages + Supabase
 
-Bản website RESELLER đã gắn **nguyên bản** 3 ảnh bạn gửi: logo NOX Felix Phan, QR Techcombank và banner ACC CLONE FF. Các tệp ảnh được sao chép byte-for-byte, không crop, không chỉnh màu, không vẽ lại. GitHub Pages là nơi host giao diện; Supabase là backend cần thiết để xác thực, lưu kho, đơn hàng, ví, duyệt nạp và chat realtime.
+Bản source đã được rà soát và cập nhật cấu hình Supabase theo Project URL và Publishable key bạn cung cấp. Giao diện chạy trên GitHub Pages; xác thực, dữ liệu, kho, ví, đơn hàng, duyệt nạp và chat dùng Supabase.
 
-## Chức năng trong mã nguồn
+## Thành phần
 
-- Đăng nhập username/password; không có đăng ký Seller công khai.
-- Admin tạo Seller qua Edge Function `admin-create-seller` (không đưa service-role key lên GitHub).
-- Seller không thấy menu/quyền quản trị; các route Admin bị chặn ở giao diện và dữ liệu được bảo vệ bằng RLS.
-- APP NOX: 7.000đ / 45.000đ / 115.000đ; ACC CLONE FF: 5.000đ / 32.000đ / 45.000đ.
-- Admin thêm kho Key: mỗi dòng một Key; ACC: mỗi dòng `taikhoan|matkhau`.
-- Admin tạo/sửa sản phẩm, giá, mô tả và ảnh; Seller nhận dữ liệu mới từ database.
-- Mua hàng chạy bằng RPC transaction: kiểm tra ví và kho, cấp đúng số lượng, đánh dấu hàng đã bán, trừ ví và ghi đơn trong cùng giao dịch.
-- Doanh thu được tính từ tổng `orders.total` (đơn mua đã thành công), **không cộng tiền nạp**.
-- Nạp tiền có hóa đơn và nút “Đã nạp tiền”; thao tác này tạo yêu cầu để Admin đối soát, không tự cộng ví. Admin duyệt bằng RPC an toàn.
-- Chat Seller ↔ Admin realtime, gửi ảnh/tệp qua Storage.
-- QR và ảnh thương hiệu sử dụng đúng ảnh gốc người dùng gửi.
+- `index.html`, `style.css`, `app.js`: giao diện và logic website.
+- `config.js`: Project URL + Publishable key công khai (được phép dùng ở trình duyệt).
+- `supabase/schema.sql`: schema cho phiên bản RESELLER hiện tại.
+- `supabase/00_prepare_previous_schema.sql`: giữ lại và đổi tên schema cũ nếu bạn đã chạy bộ SQL RESELLER trước đó.
+- `supabase/02_import_previous_data.sql`: chuyển hồ sơ, sản phẩm, kho, yêu cầu nạp, lịch sử ví và tin nhắn từ schema cũ.
+- `supabase/functions/admin-create-seller/index.ts`: Edge Function tạo tài khoản Seller an toàn.
 
-## A. Cấu hình Supabase (bắt buộc cho dữ liệu thật)
+## QUAN TRỌNG — database hiện tại của bạn
 
-GitHub Pages không có máy chủ để giữ bí mật hoặc xử lý giao dịch. Vì vậy các chức năng nhiều tài khoản và đồng bộ dữ liệu phải kết nối Supabase. Không cần Render và không cần chạy CMD trên máy tính.
+Trước đó bạn đã chạy một bộ SQL có các cột `profiles.email`, `profiles.wallet_balance`, `profiles.is_active` và bảng `key_stock`, `acc_stock`, `deposits`, `transactions`, `messages`. Source trong ZIP dùng cấu trúc mới (`wallet`, `active`, `inventory`, `deposit_requests`, `wallet_transactions`, `chat_messages`). Chỉ chạy `schema.sql` trực tiếp trên database cũ sẽ không tự đổi cấu trúc vì `CREATE TABLE IF NOT EXISTS` không sửa cột cũ.
 
-1. Tạo project tại https://supabase.com/dashboard.
-2. Vào **SQL Editor → New query**, dán toàn bộ `supabase/schema.sql`, bấm **Run**.
-3. Vào **Project Settings → API**, sao chép **Project URL** và **anon/public key**.
-4. Mở `config.js`, thay hai giá trị placeholder:
-   - `SUPABASE_URL`: Project URL.
-   - `SUPABASE_ANON_KEY`: anon/public key.
-   Chỉ đưa anon/public key vào frontend. Tuyệt đối không đưa `service_role` key vào GitHub.
-5. Vào **Authentication → Users → Add user**, tạo Admin với email `phucphan@reseller.local`, đặt mật khẩu riêng, bật xác nhận email.
-6. Chạy câu lệnh sau trong SQL Editor để gán quyền Admin cho user vừa tạo:
+Nếu đúng là bạn đã chạy bộ SQL cũ, hãy làm theo thứ tự dưới đây để giữ dữ liệu cũ:
+
+1. Supabase → **SQL Editor** → **New query**.
+2. Mở `supabase/00_prepare_previous_schema.sql`, sao chép toàn bộ và bấm **Run**. Script đổi tên các bảng cũ thành `legacy_*`, không xóa dữ liệu.
+3. Mở `supabase/schema.sql`, sao chép toàn bộ và bấm **Run**.
+4. Mở `supabase/02_import_previous_data.sql`, sao chép toàn bộ và bấm **Run** một lần. Script chuyển hồ sơ, sản phẩm, kho, nạp tiền, lịch sử ví và tin nhắn. Đơn hàng cũ vẫn được giữ nguyên trong `legacy_orders` và `legacy_order_items`; chưa chuyển vào màn hình lịch sử mới do cấu trúc đơn cũ hỗ trợ nhiều sản phẩm trong một đơn.
+5. Nếu database của bạn là project mới, chưa chạy SQL cũ, chỉ cần chạy `schema.sql`.
+
+Không xóa các bảng `legacy_*` cho tới khi bạn đã kiểm tra dữ liệu và xác nhận không cần lưu trữ nữa.
+
+## Tạo / gán Admin
+
+1. Trong Supabase → **Authentication → Users**, tạo hoặc xác nhận tài khoản Auth với email `phucphanmedia@gmail.com` và mật khẩu bạn tự đặt.
+2. Trong SQL Editor chạy:
 
 ```sql
 insert into public.profiles(id,username,display_name,role)
 select id,'phucphan','Phuc Phan','admin'
-from auth.users where email='phucphan@reseller.local'
-on conflict(id) do update set username='phucphan',display_name='Phuc Phan',role='admin',active=true;
+from auth.users
+where email='phucphanmedia@gmail.com'
+on conflict(id) do update
+set username='phucphan',display_name='Phuc Phan',role='admin',active=true;
 ```
 
-7. Tạo Edge Function `admin-create-seller` trong **Edge Functions**. Dùng nội dung `supabase/functions/admin-create-seller/index.ts`. Supabase Dashboard có thể tạo/deploy function qua giao diện; function dùng biến môi trường `SUPABASE_SERVICE_ROLE_KEY` ở máy chủ Supabase, không đưa key này vào repository.
-8. Bật Realtime cho bảng `chat_messages` trong **Database → Replication** nếu chưa được bật.
+3. Đăng nhập website bằng username `phucphan` và mật khẩu Auth ở bước 1.
 
-## B. Đưa lên GitHub Pages
+## Cấu hình Supabase đã điền
+
+`config.js` hiện dùng:
+
+- Project URL: `https://xzjiyhchujeddupjinho.supabase.co`
+- Publishable key: key công khai `sb_publishable_...` bạn gửi.
+
+Publishable key được thiết kế để xuất hiện trong trình duyệt; quyền truy cập dữ liệu vẫn phải được kiểm soát bằng RLS. **Không bao giờ** đưa `service_role` key, JWT secret hoặc database password vào `config.js`, HTML, JavaScript hay GitHub.
+
+## Deploy Edge Function tạo Seller
+
+1. Supabase → **Edge Functions** → tạo function tên `admin-create-seller`.
+2. Dùng nội dung `supabase/functions/admin-create-seller/index.ts`.
+3. Deploy function. Giữ `SUPABASE_SERVICE_ROLE_KEY` trong secrets phía Supabase Function; tuyệt đối không đưa key đó vào GitHub.
+4. Bật Realtime cho bảng `chat_messages` nếu project chưa bật publication này.
+
+## Đưa website lên GitHub Pages
 
 1. Giải nén ZIP.
-2. Upload **toàn bộ nội dung bên trong** thư mục `RESELLER-PREMIUM` vào repository, sao cho `index.html`, `app.js`, `style.css`, `config.js` nằm ở root.
-3. Vào **Settings → Pages**.
-4. Chọn **Deploy from a branch**, branch `main`, folder `/ (root)`, bấm Save.
-5. Đợi GitHub Pages deploy và mở URL được cấp.
+2. Mở thư mục `RESELLER-PREMIUM` (hoặc thư mục gốc đã giải nén bản FIXED).
+3. Upload **các nội dung bên trong thư mục** lên root repository: `index.html`, `app.js`, `style.css`, `config.js`, `assets/`, `supabase/`, `.nojekyll`, `README.md`.
+4. GitHub repository → **Settings → Pages**.
+5. Chọn **Deploy from a branch** → branch `main` → folder `/(root)` → **Save**.
+6. Chờ GitHub Pages hoàn tất deployment rồi mở URL GitHub Pages hiển thị.
 
-Không dùng Render, không cần CMD.
+Repository hiện tại của bạn là Private. GitHub Pages có thể yêu cầu gói/tổ chức hỗ trợ Pages cho repository Private; nếu không bật được Pages, đổi repository sang Public hoặc dùng hosting static phù hợp. Không để bất kỳ secret backend nào trong repository.
 
-## C. Đăng nhập và phân quyền
+## Luồng chức năng
 
-- Admin đăng nhập bằng username `phucphan`; password là mật khẩu bạn tự đặt trong Supabase Auth ở bước A5.
-- Seller đăng nhập bằng username/password do Admin tạo trong mục **Quản lý Seller**.
-- Seller không có quyền vào Admin. Admin có thể khóa/mở lại tài khoản Seller. Tài khoản bị khóa không đăng nhập được; lịch sử giao dịch vẫn được giữ để đối soát.
-- Không có đăng ký Seller tự do.
+- Không có đăng ký Seller công khai. Admin tạo Seller trong mục **Quản lý Seller**.
+- Seller đăng nhập bằng username và mật khẩu do Admin cấp.
+- Admin có thể khóa/mở Seller.
+- Admin thêm kho: mỗi dòng một Key; ACC theo định dạng `taikhoan|matkhau`.
+- Mua hàng gọi RPC giao dịch nguyên tử: kiểm tra số dư và kho, cấp phát, trừ ví và ghi đơn trong cùng transaction.
+- Nạp tiền chỉ tạo yêu cầu. Admin phải kiểm tra tiền thực nhận rồi mới duyệt; RPC mới cộng số dư.
+- Chat Seller ↔ Admin hỗ trợ tin nhắn và tệp đính kèm.
+- Doanh thu lấy từ đơn hàng, không cộng tiền nạp.
 
-## D. Nạp tiền và đối soát
+## Thanh toán
 
-Thông tin hiển thị: **PHAN LE THANH PHUC**, STK **19077609972010**, Techcombank. QR là ảnh gốc đã tải lên. Nội dung chuyển khoản là mã hóa đơn do hệ thống sinh. Nút “Đã nạp tiền” chỉ gửi yêu cầu; Admin cần kiểm tra tiền thực nhận trước khi duyệt. Chưa có kết nối API ngân hàng tự động trong gói này.
+Thông tin Techcombank đang hiển thị trong giao diện: PHAN LE THANH PHUC, STK `19077609972010`. QR trong thư mục assets là ảnh tĩnh. Hệ thống hiện **chưa tích hợp API ngân hàng/webhook tự động**. Nội dung chuyển khoản là mã hóa đơn; Seller gửi bill qua chat và Admin tự đối soát trước khi duyệt.
 
-## E. Thư mục ảnh
+## Kiểm tra trước khi bán thật
 
-- `assets/branding/`: logo NOX, QR Techcombank.
-- `assets/products/app-nox/`: ảnh sản phẩm APP NOX.
-- `assets/products/acc-clone-ff/`: banner ACC CLONE FF.
-- `assets/status-hack/`: ảnh NOX ở STATUS HACK.
-
-Bạn có thể thay ảnh trong các thư mục trên bằng cách thay tệp đúng tên hoặc cập nhật `image_url` của sản phẩm trong Admin.
-
-## Lưu ý trước khi vận hành thật
-
-Website đã được đóng gói theo kiến trúc GitHub Pages + Supabase, nhưng không thể hoạt động với nhiều Seller cho tới khi bạn tạo project Supabase, chạy SQL, tạo Admin và điền URL/anon key. Không có thông tin Supabase của bạn trong cuộc trò chuyện nên tôi không thể tự kết nối hoặc xác nhận giao dịch thật từ đây. QR là ảnh tĩnh nguyên bản; nếu QR không mã hóa sẵn số tiền/nội dung thì người chuyển khoản cần nhập nội dung hóa đơn hiển thị cạnh QR.
+- Đã chạy đúng bộ SQL theo trạng thái database.
+- Đã tạo profile Admin và đăng nhập thành công.
+- Đã deploy Edge Function `admin-create-seller`.
+- Đã thử tạo Seller, khóa Seller, thêm kho thử, mua thử, tạo yêu cầu nạp và duyệt thử.
+- Đã xác nhận RLS ngăn Seller đọc kho thô và dữ liệu Seller khác.
+- Không dùng key bí mật trong frontend.

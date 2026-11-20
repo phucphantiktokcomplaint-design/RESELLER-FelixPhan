@@ -145,7 +145,7 @@ begin
   insert into public.orders(seller_id,product_id,product_name,quantity,unit_price,total,delivered_items)
   values(u,p.id,p.name,p_quantity,p.price,total_cost,items) returning id into order_uuid;
   insert into public.wallet_transactions(profile_id,kind,amount,note,order_id)
-  values(u,'purchase',-total_cost,'Mua '+p.name,order_uuid);
+  values(u,'purchase',-total_cost,'Mua '||p.name,order_uuid);
   return jsonb_build_object('order_id',order_uuid,'product_name',p.name,'quantity',p_quantity,'total',total_cost,'items',items);
 end $$;
 revoke all on function public.purchase_product(text,integer) from public;
@@ -162,7 +162,7 @@ begin
   if d.status<>'pending' then raise exception 'Yêu cầu đã được xử lý'; end if;
   update public.deposit_requests set status='approved',reviewed_at=now(),reviewed_by=auth.uid() where id=p_deposit_id;
   update public.profiles set wallet=wallet+d.amount where id=d.seller_id;
-  insert into public.wallet_transactions(profile_id,kind,amount,note) values(d.seller_id,'deposit',d.amount,'Nạp tiền '+d.transfer_memo);
+  insert into public.wallet_transactions(profile_id,kind,amount,note) values(d.seller_id,'deposit',d.amount,'Nạp tiền '||d.transfer_memo);
 end $$;
 revoke all on function public.approve_deposit(uuid) from public;
 grant execute on function public.approve_deposit(uuid) to authenticated;
@@ -175,13 +175,15 @@ insert into public.products(id,category,name,description,price,image_url) values
 ('acc-lv5','acc','CLONE FF LV5','Tài khoản Free Fire cấp độ 5',5000,'assets/products/acc-clone-ff/acc-clone-ff-banner.png'),
 ('acc-kc','acc','CLONE FF Rank KC','Tài khoản Free Fire rank KC',32000,'assets/products/acc-clone-ff/acc-clone-ff-banner.png'),
 ('acc-ht','acc','CLONE FF RANK HT','Tài khoản Free Fire rank HT',45000,'assets/products/acc-clone-ff/acc-clone-ff-banner.png')
-on conflict(id) do update set category=excluded.category,name=excluded.name,description=excluded.description,price=excluded.price,image_url=excluded.image_url;
+on conflict(id) do nothing;
 
 -- Storage bucket for chat attachments / payment proofs.
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('reseller-files','reseller-files',false,10485760,array['image/png','image/jpeg','image/webp','application/pdf'])
 on conflict(id) do nothing;
+drop policy if exists "authenticated upload reseller files" on storage.objects;
 create policy "authenticated upload reseller files" on storage.objects for insert to authenticated with check (bucket_id='reseller-files' and ((storage.foldername(name))[1]=auth.uid()::text or public.is_admin()));
+drop policy if exists "owner or admin read reseller files" on storage.objects;
 create policy "owner or admin read reseller files" on storage.objects for select to authenticated using (bucket_id='reseller-files' and ((storage.foldername(name))[1]=auth.uid()::text or public.is_admin()));
 
 -- Realtime: enable chat updates in Supabase Dashboard if publication is not already configured.
@@ -191,11 +193,15 @@ do $$ begin alter publication supabase_realtime add table public.chat_messages; 
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('product-images','product-images',true,10485760,array['image/png','image/jpeg','image/webp'])
 on conflict(id) do nothing;
+drop policy if exists "admin upload product images" on storage.objects;
 create policy "admin upload product images" on storage.objects for insert to authenticated with check (bucket_id='product-images' and public.is_admin());
+drop policy if exists "admin update product images" on storage.objects;
 create policy "admin update product images" on storage.objects for update to authenticated using (bucket_id='product-images' and public.is_admin()) with check (bucket_id='product-images' and public.is_admin());
+drop policy if exists "public read product images" on storage.objects;
 create policy "public read product images" on storage.objects for select to public using (bucket_id='product-images');
 
 -- Chat attachment recipient can read files sent in their conversation, including files uploaded by Admin.
+drop policy if exists "chat participants read attachments" on storage.objects;
 create policy "chat participants read attachments" on storage.objects for select to authenticated using (
   bucket_id='reseller-files' and (
     (storage.foldername(name))[1]=auth.uid()::text
@@ -205,9 +211,9 @@ create policy "chat participants read attachments" on storage.objects for select
 );
 
 -- One-time Admin bootstrap. First create an Auth user in Supabase Dashboard with email
--- phucphan@reseller.local and the password you choose, then run this statement:
+-- phucphanmedia@gmail.com and the password you choose, then run this statement:
 -- insert into public.profiles(id,username,display_name,role)
--- select id,'phucphan','Phuc Phan','admin' from auth.users where email='phucphan@reseller.local'
+-- select id,'phucphan','Phuc Phan','admin' from auth.users where email='phucphanmedia@gmail.com'
 -- on conflict(id) do update set username='phucphan',display_name='Phuc Phan',role='admin',active=true;
 
 create or replace function public.admin_dashboard_stats()
