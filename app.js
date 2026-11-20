@@ -12,9 +12,62 @@ const date=s=>new Date(s).toLocaleString('vi-VN');
 function go(page){if(state.profile?.role!=='admin'&&['admin','inventory','sellers','approve','chats','analytics'].includes(page)){toast('Bạn không có quyền truy cập khu vực Admin.');return}if(state.profile?.role==='admin'&&['overview','products','deposit','orders','deposits','status','support'].includes(page)){toast('Khu vực này dành cho Seller.');return}$$('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+page));$$('.nav-item[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));const n=$(`[data-page="${page}"]`);if($('#crumb'))$('#crumb').textContent=n?n.textContent.trim():page;$('#sidebar')?.classList.remove('open');window.scrollTo(0,0);if(page==='products')renderProducts();if(page==='orders')loadOrders();if(page==='deposits')loadDeposits();if(page==='inventory')loadInventory();if(page==='sellers')loadSellers();if(page==='approve')loadPending();if(page==='chats')loadChatUsers();if(page==='admin'||page==='analytics')loadAdminStats();if(page==='support')loadChat(state.user.id)}
 function setRoleUI(){const admin=state.profile.role==='admin';$('#adminNav').classList.toggle('hidden',!admin);$('#sellerNav').classList.toggle('hidden',admin);$('#sideName').textContent=state.profile.display_name||state.profile.username;$('#topName').textContent=state.profile.username;$('#helloName').textContent=state.profile.display_name||state.profile.username;$('.user-chip .avatar').textContent=(state.profile.username||'R')[0].toUpperCase();$('#floatingChat').classList.toggle('hidden',admin);}
 function showLogin(){state.user=null;state.profile=null;$('#app').classList.add('hidden');$('#login').classList.remove('hidden');$('#floatingChat').classList.add('hidden');$('#chatWidget').classList.add('hidden')}
-async function boot(){if(!configured){toast('Chưa kết nối cơ sở dữ liệu. Mở README để cấu hình Supabase trước khi dùng.');$('#login').classList.remove('hidden');return}const {data:{session}}=await sb.auth.getSession();if(session)await acceptSession(session.user)}
-async function acceptSession(user){const {data:p,error}=await sb.from('profiles').select('*').eq('id',user.id).single();if(error||!p||!p.active){await sb.auth.signOut();toast('Tài khoản chưa được cấp quyền hoặc đã bị khóa.');return}state.user=user;state.profile=p;$('#login').classList.add('hidden');$('#app').classList.remove('hidden');setRoleUI();$('#today').textContent=new Date().toLocaleDateString('vi-VN');await Promise.all([loadWallet(),loadProducts(),loadOrders(),loadDeposits()]);go(p.role==='admin'?'admin':'overview');if(p.role==='admin')await loadAdminStats();startRealtime();}
-$('#loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!sb){toast('Website chưa kết nối cơ sở dữ liệu. Vui lòng hoàn tất cấu hình Supabase.');return}const username=$('#username').value.trim().toLowerCase(),password=$('#password').value;if(!username||!password)return;const email=username==='phucphan'?'phucphanmedia@gmail.com':`${username}@seller.reseller.local`;const {data,error}=await sb.auth.signInWithPassword({email,password});if(error){toast('Đăng nhập thất bại: '+error.message);return}await acceptSession(data.user)});
+async function boot(){
+  if(!configured){toast('Chưa cấu hình Supabase. Kiểm tra config.js.');$('#login').classList.remove('hidden');return}
+  try{
+    const {data,error}=await sb.auth.getSession();
+    if(error){toast('Không thể kiểm tra phiên đăng nhập: '+error.message);return}
+    if(data?.session) await acceptSession(data.session.user);
+  }catch(err){toast('Không kết nối được Supabase. Kiểm tra URL dự án, khóa Publishable và kết nối mạng.');console.error('Supabase boot error:',err)}
+}
+async function acceptSession(user){
+  let result;
+  try{
+    result=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
+  }catch(err){
+    toast('Không tải được hồ sơ: kiểm tra kết nối Supabase và URL trong config.js.');
+    console.error('Profile fetch error:',err);return;
+  }
+  const {data:p,error}=result;
+  if(error){
+    toast('Lỗi đọc hồ sơ Supabase: '+error.message);
+    console.error('Profile query error:',error);return;
+  }
+  if(!p){
+    await sb.auth.signOut();
+    toast('Đăng nhập Auth thành công nhưng chưa có dòng profiles cho tài khoản này. Admin cần chạy câu lệnh tạo hồ sơ trong README.');
+    return;
+  }
+  if(p.active!==true){
+    await sb.auth.signOut();
+    toast('Tài khoản đã bị Admin khóa. Vui lòng liên hệ Admin.');
+    return;
+  }
+  state.user=user;state.profile=p;
+  $('#login').classList.add('hidden');$('#app').classList.remove('hidden');
+  setRoleUI();$('#today').textContent=new Date().toLocaleDateString('vi-VN');
+  await Promise.all([loadWallet(),loadProducts(),loadOrders(),loadDeposits()]);
+  go(p.role==='admin'?'admin':'overview');
+  if(p.role==='admin')await loadAdminStats();
+  startRealtime();
+}
+$('#loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!sb){toast('Website chưa kết nối cơ sở dữ liệu. Kiểm tra config.js.');return}
+  const username=$('#username').value.trim().toLowerCase(),password=$('#password').value;
+  if(!username||!password)return;
+  const email=username==='phucphan'?'phucphanmedia@gmail.com':`${username}@seller.reseller.local`;
+  const button=$('#loginForm').querySelector('[type="submit"]');
+  if(button){button.disabled=true}
+  try{
+    const {data,error}=await sb.auth.signInWithPassword({email,password});
+    if(error){toast('Đăng nhập thất bại: '+error.message);return}
+    await acceptSession(data.user);
+  }catch(err){
+    toast('Không kết nối được Supabase (Failed to fetch). Kiểm tra URL dự án và mạng.');
+    console.error('Sign-in network error:',err);
+  }finally{if(button)button.disabled=false}
+});
 $('#togglePass').onclick=()=>$('#password').type=$('#password').type==='password'?'text':'password';$('#contactAdmin').onclick=()=>toast('Tài khoản Seller chỉ do Admin cấp. Vui lòng liên hệ @FelixPhan.');
 $('#logout').onclick=async()=>{if(sb)await sb.auth.signOut();if(state.chatChannel)sb.removeChannel(state.chatChannel);showLogin();toast('Đã đăng xuất')};
 $('#menuBtn').onclick=()=>$('#sidebar').classList.add('open');$('#sideClose').onclick=()=>$('#sidebar').classList.remove('open');

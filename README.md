@@ -45,7 +45,7 @@ set username='phucphan',display_name='Phuc Phan',role='admin',active=true;
 
 `config.js` hiện dùng:
 
-- Project URL: `https://xzjiyhchujeddupjinho.supabase.co`
+- Project URL: `https://xzjiyhcuhjeddubjinho.supabase.co`
 - Publishable key: key công khai `sb_publishable_...` bạn gửi.
 
 Publishable key được thiết kế để xuất hiện trong trình duyệt; quyền truy cập dữ liệu vẫn phải được kiểm soát bằng RLS. **Không bao giờ** đưa `service_role` key, JWT secret hoặc database password vào `config.js`, HTML, JavaScript hay GitHub.
@@ -91,3 +91,12 @@ Thông tin Techcombank đang hiển thị trong giao diện: PHAN LE THANH PHUC,
 - Đã thử tạo Seller, khóa Seller, thêm kho thử, mua thử, tạo yêu cầu nạp và duyệt thử.
 - Đã xác nhận RLS ngăn Seller đọc kho thô và dữ liệu Seller khác.
 - Không dùng key bí mật trong frontend.
+
+
+## Sửa lỗi kết nối / đăng nhập
+
+- `SUPABASE_URL` phải đúng chính xác là `https://xzjiyhcuhjeddubjinho.supabase.co` (theo Project URL của dự án Supabase đang dùng).
+- `SUPABASE_ANON_KEY` trong `config.js` là Publishable key của chính dự án đó; không dùng database password hoặc `service_role`.
+- Nếu hiện `Failed to fetch`, mở Supabase Dashboard của đúng project và kiểm tra Project URL/Publishable key trong phần API Keys. Đừng dùng connection string PostgreSQL ở mục Connect.
+- Nếu đăng nhập Auth thành công nhưng báo chưa có hồ sơ, kiểm tra `public.profiles` có dòng `id` trùng với User ID trong Authentication → Users hay không. Admin phải có `username='phucphan'`, `role='admin'`, `active=true`.
+- Nếu SQL Editor báo `Success. No rows returned` với câu `UPDATE`, đó không nhất thiết là lỗi; hãy chạy câu `SELECT` kiểm tra lại dòng hồ sơ.
